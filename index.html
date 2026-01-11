@@ -1,0 +1,621 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Toyota Production System - Interactive Explorer</title>
+    
+    <!-- React & ReactDOM -->
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&family=JetBrains+Mono:wght@500&display=swap" rel="stylesheet">
+
+    <style>
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: linear-gradient(135deg, #f6f8fd 0%, #eef2f9 100%);
+            color: #1e293b;
+            overflow-x: hidden;
+        }
+        
+        /* Glassmorphism */
+        .glass {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        /* 3D Flip Card */
+        .perspective-1000 {
+            perspective: 1000px;
+        }
+        .preserve-3d {
+            transform-style: preserve-3d;
+        }
+        .backface-hidden {
+            backface-visibility: hidden;
+        }
+        .rotate-y-180 {
+            transform: rotateY(180deg);
+        }
+
+        /* Custom Shapes for the House */
+        .roof-shape {
+            clip-path: polygon(50% 0%, 100% 100%, 0% 100%);
+        }
+        
+        /* Animations */
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-8px); }
+            100% { transform: translateY(0px); }
+        }
+        .animate-float {
+            animation: float 4s ease-in-out infinite;
+        }
+        
+        @keyframes slide {
+            from { background-position: 0 0; }
+            to { background-position: 40px 0; }
+        }
+
+        .conveyor-belt {
+            background: repeating-linear-gradient(
+                90deg,
+                #334155,
+                #334155 20px,
+                #475569 20px,
+                #475569 40px
+            );
+            animation: slide 1s linear infinite;
+        }
+        .conveyor-stopped {
+            animation: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // --- ICONS (SVG) ---
+        const Icons = {
+            Home: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>,
+            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>,
+            Play: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>,
+            Pause: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>,
+            AlertTriangle: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>,
+            Box: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>,
+            RefreshCw: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>,
+            Users: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>,
+            Info: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        };
+
+        // --- COMPONENTS ---
+
+        // 1. Navigation
+        const Navbar = ({ setView, activeView }) => {
+            const navItems = [
+                { id: 'house', label: 'The House', icon: Icons.Home },
+                { id: 'waste', label: '7 Wastes', icon: Icons.Trash },
+                { id: 'flow', label: 'Flow Sim', icon: Icons.RefreshCw },
+                { id: 'jidoka', label: 'Jidoka Lab', icon: Icons.Zap },
+            ];
+
+            return (
+                <nav className="fixed bottom-6 left-1/2 transform -translate-x-1/2 glass rounded-full shadow-2xl px-2 py-2 flex gap-2 z-50">
+                    {navItems.map((item) => (
+                        <button
+                            key={item.id}
+                            onClick={() => setView(item.id)}
+                            className={`flex items-center gap-2 transition-all duration-300 px-5 py-3 rounded-full ${
+                                activeView === item.id 
+                                    ? 'bg-slate-900 text-white shadow-lg scale-105' 
+                                    : 'text-slate-500 hover:text-slate-900 hover:bg-white/50'
+                            }`}
+                        >
+                            <div className="w-5 h-5"><item.icon /></div>
+                            <span className="text-sm font-bold hidden sm:block">{item.label}</span>
+                        </button>
+                    ))}
+                </nav>
+            );
+        };
+
+        // 2. The TPS House View (Redesigned)
+        const HouseView = () => {
+            const [selectedPart, setSelectedPart] = useState(null);
+
+            const houseData = {
+                roof: {
+                    title: "The Goals (The Roof)",
+                    color: "text-red-600 bg-red-50",
+                    accent: "bg-red-500",
+                    content: "The Roof represents the goals. Just like a real roof protects the house, these goals protect the company.",
+                    details: ["Highest Quality", "Lowest Cost", "Shortest Lead Time"]
+                },
+                pillarJIT: {
+                    title: "Just-In-Time (JIT)",
+                    color: "text-blue-600 bg-blue-50",
+                    accent: "bg-blue-500",
+                    content: "Making only what is needed, when it is needed, and in the amount needed. No huge piles of inventory!",
+                    details: ["Continuous Flow", "Takt Time", "Pull System"]
+                },
+                pillarJidoka: {
+                    title: "Jidoka",
+                    color: "text-amber-600 bg-amber-50",
+                    accent: "bg-amber-500",
+                    content: "Built-in Quality. Machines detect problems and stop automatically. Humans fix the root cause.",
+                    details: ["Stop & Notify", "Separation of Man & Machine", "Error Proofing (Poka-yoke)"]
+                },
+                center: {
+                    title: "People & Improvement",
+                    color: "text-emerald-600 bg-emerald-50",
+                    accent: "bg-emerald-500",
+                    content: "The heart of the system. Respect for people and 'Kaizen' (Continuous Improvement). Everyone contributes ideas.",
+                    details: ["Respect for People", "Teamwork", "Kaizen (Daily Improvement)"]
+                },
+                foundation: {
+                    title: "The Foundation",
+                    color: "text-slate-600 bg-slate-50",
+                    accent: "bg-slate-600",
+                    content: "A house needs a solid base. This is about leveling the workload and having reliable equipment.",
+                    details: ["Heijunka (Leveling)", "Standardized Work", "Stability"]
+                }
+            };
+
+            const renderModal = () => {
+                if (!selectedPart) return null;
+                const data = houseData[selectedPart];
+                return (
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={() => setSelectedPart(null)}>
+                        <div className={`bg-white rounded-3xl p-8 max-w-lg w-full shadow-2xl animate-float relative border-t-8 ${data.color.split(' ')[0] === 'text-red-600' ? 'border-red-500' : data.color.split(' ')[0] === 'text-blue-600' ? 'border-blue-500' : data.color.split(' ')[0] === 'text-amber-600' ? 'border-amber-500' : data.color.split(' ')[0] === 'text-emerald-600' ? 'border-emerald-500' : 'border-slate-600'}`} onClick={e => e.stopPropagation()}>
+                            <button className="absolute top-4 right-4 text-slate-300 hover:text-slate-800 transition-colors" onClick={() => setSelectedPart(null)}>✕</button>
+                            <h2 className={`text-3xl font-extrabold mb-4 ${data.color.split(' ')[0]}`}>{data.title}</h2>
+                            <p className="text-slate-600 text-lg mb-8 leading-relaxed font-medium">{data.content}</p>
+                            <div className="space-y-3">
+                                {data.details.map((detail, idx) => (
+                                    <div key={idx} className="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                                        <div className={`w-3 h-3 rounded-full ${data.accent}`}></div>
+                                        <span className="text-slate-700 font-bold">{detail}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="flex flex-col items-center justify-center min-h-screen py-10 px-4">
+                    <div className="text-center mb-10">
+                        <span className="inline-block py-1 px-3 rounded-full bg-indigo-100 text-indigo-700 text-xs font-bold tracking-wider mb-2">INTERACTIVE MODEL</span>
+                        <h1 className="text-5xl font-extrabold text-slate-900 mb-2">The TPS House</h1>
+                        <p className="text-slate-500">Tap the Roof, Pillars, or Foundation to explore.</p>
+                    </div>
+                    
+                    {/* THE HOUSE STRUCTURE */}
+                    <div className="relative w-full max-w-2xl flex flex-col items-center animate-float" style={{animationDuration: '6s'}}>
+                        
+                        {/* 1. ROOF (Triangle Shape) */}
+                        <div 
+                            onClick={() => setSelectedPart('roof')}
+                            className="relative w-full h-40 cursor-pointer group z-20 hover:scale-[1.02] transition-transform duration-300"
+                        >
+                            <div className="absolute inset-0 bg-red-500 roof-shape shadow-2xl flex items-end justify-center pb-4 group-hover:bg-red-400 transition-colors">
+                                <div className="text-center text-white mb-6">
+                                    <div className="text-3xl font-black tracking-tight">GOALS</div>
+                                    <div className="text-xs font-medium opacity-90">Quality • Cost • Lead Time</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* 2. PILLARS & CENTER (Grid Layout) */}
+                        <div className="flex w-[85%] h-64 shadow-2xl z-10 -mt-1 mx-auto bg-white">
+                            
+                            {/* Left Pillar (JIT) */}
+                            <div 
+                                onClick={() => setSelectedPart('pillarJIT')}
+                                className="w-1/3 bg-blue-500 hover:bg-blue-400 text-white flex flex-col items-center justify-center cursor-pointer transition-colors relative group border-r border-blue-600"
+                            >
+                                <div className="absolute inset-x-0 top-0 h-4 bg-black/10"></div>
+                                <div className="absolute inset-x-0 bottom-0 h-4 bg-black/10"></div>
+                                <Icons.RefreshCw />
+                                <span className="text-2xl font-black mt-2">JIT</span>
+                                <span className="text-xs opacity-75 font-bold mt-1">Right Part, Right Time</span>
+                            </div>
+
+                            {/* Center (People) */}
+                            <div 
+                                onClick={() => setSelectedPart('center')}
+                                className="w-1/3 bg-white flex flex-col items-center justify-center cursor-pointer hover:bg-emerald-50 transition-colors border-x-4 border-slate-200 relative p-4"
+                            >
+                                <div className="w-16 h-16 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-2">
+                                    <Icons.Users />
+                                </div>
+                                <span className="text-sm font-black text-emerald-800 text-center leading-tight">RESPECT FOR PEOPLE</span>
+                                <span className="text-xs text-emerald-600 font-bold mt-1">& KAIZEN</span>
+                            </div>
+
+                            {/* Right Pillar (Jidoka) */}
+                            <div 
+                                onClick={() => setSelectedPart('pillarJidoka')}
+                                className="w-1/3 bg-amber-500 hover:bg-amber-400 text-white flex flex-col items-center justify-center cursor-pointer transition-colors relative group border-l border-amber-600"
+                            >
+                                <div className="absolute inset-x-0 top-0 h-4 bg-black/10"></div>
+                                <div className="absolute inset-x-0 bottom-0 h-4 bg-black/10"></div>
+                                <Icons.Zap />
+                                <span className="text-2xl font-black mt-2">JIDOKA</span>
+                                <span className="text-xs opacity-75 font-bold mt-1">Built-in Quality</span>
+                            </div>
+                        </div>
+
+                        {/* 3. FOUNDATION */}
+                        <div 
+                            onClick={() => setSelectedPart('foundation')}
+                            className="w-[95%] h-24 bg-slate-700 hover:bg-slate-600 text-white flex flex-col items-center justify-center rounded-sm cursor-pointer transition-all shadow-2xl z-20 border-t-4 border-slate-500"
+                        >
+                            <span className="text-2xl font-black tracking-widest text-slate-300">FOUNDATION</span>
+                            <span className="text-xs text-slate-400 font-bold mt-1">Standardized Work • Heijunka • Stability</span>
+                        </div>
+
+                    </div>
+                    {renderModal()}
+                </div>
+            );
+        };
+
+        // 3. The 7 Wastes (Flip Cards)
+        const WasteView = () => {
+            const [flipped, setFlipped] = useState({});
+            const [learnedCount, setLearnedCount] = useState(0);
+
+            const wastes = [
+                { id: 1, title: "Over-Production", desc: "Making more than needed or too early.", fix: "Use a Pull System (Kanban) so you only make what the customer ordered.", icon: "🏭", color: "from-purple-500 to-indigo-600" },
+                { id: 2, title: "Waiting", desc: "Idle time for workers or machines.", fix: "Balance the line and enable multi-process handling so no one is just watching a machine.", icon: "⏳", color: "from-amber-400 to-orange-500" },
+                { id: 3, title: "Conveyance", desc: "Moving things further than necessary.", fix: "Re-arrange equipment into a 'U-shape' cell to minimize travel distance.", icon: "🚚", color: "from-blue-400 to-cyan-500" },
+                { id: 4, title: "Processing", desc: "Doing unneeded work (over-polishing).", fix: "Define clear standards. Don't paint the bottom of the table if no one sees it!", icon: "⚙️", color: "from-emerald-400 to-teal-600" },
+                { id: 5, title: "Inventory", desc: "Excess stock hiding problems.", fix: "Reduce batch sizes and lower the 'water level' of stock to expose the rocks (problems).", icon: "📦", color: "from-rose-400 to-red-500" },
+                { id: 6, title: "Motion", desc: "Unnecessary human movement.", fix: "Place tools and parts within easy reach. Organize the workspace (5S).", icon: "🏃", color: "from-pink-400 to-fuchsia-600" },
+                { id: 7, title: "Correction", desc: "Inspecting and fixing defects.", fix: "Build quality in at the source (Jidoka). Don't pass defects downstream.", icon: "🩹", color: "from-gray-500 to-slate-600" },
+            ];
+
+            const handleFlip = (id) => {
+                const wasFlipped = flipped[id];
+                setFlipped(prev => ({ ...prev, [id]: !prev[id] }));
+                
+                if (!wasFlipped && !flipped[id]) { // If flipping to back for first time
+                    // Check if already counted? Let's just count currently open cards or total unique clicks
+                    // Simple logic: if flipping OPEN, check total viewed
+                     setLearnedCount(Object.keys(flipped).length + (flipped[id] ? 0 : 1));
+                }
+            };
+
+            const count = Object.values(flipped).filter(Boolean).length;
+
+            return (
+                <div className="min-h-screen py-20 px-4 max-w-6xl mx-auto">
+                    <div className="flex flex-col md:flex-row justify-between items-end mb-10">
+                        <div>
+                            <h1 className="text-5xl font-extrabold text-slate-900 mb-2">The 7 Wastes</h1>
+                            <p className="text-slate-500 text-lg">Click a card to reveal the <strong>Countermeasure</strong> (How to fix it).</p>
+                        </div>
+                        <div className="mt-4 md:mt-0 bg-white px-6 py-3 rounded-2xl shadow-lg border border-slate-100">
+                            <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">Progress</span>
+                            <div className="text-2xl font-black text-slate-800">{count} / 7 Learned</div>
+                        </div>
+                    </div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+                        {wastes.map((waste) => (
+                            <div 
+                                key={waste.id} 
+                                className="group h-64 w-full cursor-pointer perspective-1000"
+                                onClick={() => handleFlip(waste.id)}
+                            >
+                                <div className={`relative w-full h-full duration-500 preserve-3d transition-transform ${flipped[waste.id] ? 'rotate-y-180' : ''}`}>
+                                    
+                                    {/* FRONT */}
+                                    <div className={`absolute inset-0 w-full h-full bg-gradient-to-br ${waste.color} rounded-3xl shadow-xl flex flex-col items-center justify-center text-white p-6 backface-hidden border border-white/20`}>
+                                        <div className="text-6xl mb-6 drop-shadow-md transform group-hover:scale-110 transition-transform">{waste.icon}</div>
+                                        <h3 className="text-2xl font-bold text-center">{waste.title}</h3>
+                                        <div className="mt-4 text-xs font-bold bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">Click to Reveal</div>
+                                    </div>
+
+                                    {/* BACK */}
+                                    <div className="absolute inset-0 w-full h-full bg-white rounded-3xl shadow-xl p-6 backface-hidden rotate-y-180 flex flex-col items-center justify-center text-center border-2 border-slate-100">
+                                        <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">The Problem</div>
+                                        <p className="text-slate-600 mb-4 font-medium leading-tight">{waste.desc}</p>
+                                        
+                                        <div className="w-full h-px bg-slate-100 my-2"></div>
+                                        
+                                        <div className="text-xs font-bold text-green-600 uppercase tracking-widest mb-2">The Fix</div>
+                                        <p className="text-slate-800 font-bold leading-snug">{waste.fix}</p>
+                                    </div>
+
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
+        // 4. Flow Simulation
+        const FlowSimulation = () => {
+            const [mode, setMode] = useState('batch');
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [items, setItems] = useState([]);
+            const [finishedCount, setFinishedCount] = useState(0);
+            const [timer, setTimer] = useState(0);
+
+            useEffect(() => {
+                let interval;
+                if (isPlaying) {
+                    interval = setInterval(() => {
+                        setTimer(t => t + 1);
+                        updateItems();
+                    }, 50);
+                }
+                return () => clearInterval(interval);
+            }, [isPlaying, items, mode]);
+
+            const startSim = () => {
+                setItems([]);
+                setFinishedCount(0);
+                setTimer(0);
+                setIsPlaying(true);
+                const newItems = Array(10).fill(0).map((_, i) => ({
+                    id: i,
+                    progress: 0,
+                    stage: 0,
+                }));
+                setItems(newItems);
+            };
+
+            const updateItems = () => {
+                setItems(prev => {
+                    let newItems = JSON.parse(JSON.stringify(prev));
+                    let allDone = true;
+                    const speed = 2; 
+                    
+                    if (mode === 'flow') {
+                        newItems = newItems.map((item, idx) => {
+                            const prevItem = newItems[idx-1];
+                            const canMove = idx === 0 || (prevItem && prevItem.progress > 20);
+                            if (canMove && item.progress < 100) item.progress += speed;
+                            if (item.progress >= 100) {
+                                if (item.stage !== 4) {
+                                    setFinishedCount(c => c + 1);
+                                    item.stage = 4;
+                                }
+                            } else { allDone = false; }
+                            return item;
+                        });
+                    } else {
+                        const batchSize = 5;
+                        const batch1Done = newItems[4].progress >= 100;
+                        newItems = newItems.map((item, idx) => {
+                            const isBatch1 = idx < batchSize;
+                            if (isBatch1) { if (item.progress < 100) item.progress += speed; } 
+                            else if (batch1Done) { if (item.progress < 100) item.progress += speed; }
+                            if (item.progress >= 100) {
+                                if (item.stage !== 4) {
+                                    setFinishedCount(c => c + 1);
+                                    item.stage = 4;
+                                }
+                            } else { allDone = false; }
+                            return item;
+                        });
+                    }
+                    if (allDone && isPlaying) setIsPlaying(false);
+                    return newItems;
+                });
+            };
+
+            return (
+                <div className="min-h-screen py-20 px-4 flex flex-col items-center">
+                     <div className="text-center mb-8">
+                        <h1 className="text-5xl font-extrabold text-slate-900 mb-2">Flow vs. Batch</h1>
+                        <p className="text-slate-500">Why does TPS prefer "One-Piece Flow"? Watch the race.</p>
+                     </div>
+
+                     <div className="glass p-2 rounded-2xl flex gap-2 mb-8 shadow-sm">
+                        <button 
+                            onClick={() => { setMode('batch'); setIsPlaying(false); setTimer(0); setItems([]); setFinishedCount(0); }}
+                            className={`px-8 py-3 rounded-xl font-bold transition-all ${mode === 'batch' ? 'bg-slate-800 text-white shadow-lg' : 'hover:bg-slate-100 text-slate-500'}`}
+                        >
+                            Batch (Traditional)
+                        </button>
+                        <button 
+                            onClick={() => { setMode('flow'); setIsPlaying(false); setTimer(0); setItems([]); setFinishedCount(0); }}
+                            className={`px-8 py-3 rounded-xl font-bold transition-all ${mode === 'flow' ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-blue-50 text-slate-500'}`}
+                        >
+                            One-Piece Flow (TPS)
+                        </button>
+                     </div>
+
+                     <div className="w-full max-w-2xl bg-white rounded-[2rem] p-8 shadow-xl border border-slate-100 relative overflow-hidden min-h-[350px]">
+                        {!isPlaying && finishedCount === 0 && (
+                            <div className="absolute inset-0 flex items-center justify-center bg-white/80 z-10 backdrop-blur-sm">
+                                <button onClick={startSim} className="bg-emerald-500 hover:bg-emerald-600 text-white px-10 py-4 rounded-full font-black shadow-emerald-500/30 shadow-2xl flex items-center gap-3 text-xl transition-all hover:scale-105 active:scale-95">
+                                    <Icons.Play /> START RACE
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="space-y-5">
+                            {items.map((item, i) => (
+                                <div key={i} className="h-6 bg-slate-100 rounded-full relative overflow-hidden ring-1 ring-slate-200">
+                                    <div 
+                                        className={`absolute top-0 left-0 h-full transition-all duration-75 flex items-center justify-end px-2 text-[10px] font-bold text-white shadow-lg
+                                            ${mode === 'batch' ? (i < 5 ? 'bg-slate-600' : 'bg-slate-400') : 'bg-gradient-to-r from-blue-500 to-cyan-400'}
+                                        `}
+                                        style={{ width: `${Math.max(5, item.progress)}%` }}
+                                    >
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                     </div>
+
+                     <div className="flex gap-8 mt-10">
+                         <div className="text-center glass px-8 py-4 rounded-2xl">
+                             <div className="text-4xl font-black text-slate-800">{(timer / 20).toFixed(1)}s</div>
+                             <div className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-1">Total Time</div>
+                         </div>
+                         <div className="text-center glass px-8 py-4 rounded-2xl">
+                             <div className="text-4xl font-black text-emerald-500">{finishedCount}</div>
+                             <div className="text-xs text-slate-400 uppercase tracking-widest font-bold mt-1">Completed</div>
+                         </div>
+                     </div>
+                </div>
+            );
+        };
+
+        // 5. Jidoka Lab
+        const JidokaLab = () => {
+            const [jidokaEnabled, setJidokaEnabled] = useState(true);
+            const [isRunning, setIsRunning] = useState(true);
+            const [hasDefect, setHasDefect] = useState(false);
+            const [products, setProducts] = useState([]);
+            const [score, setScore] = useState({ good: 0, bad: 0 });
+
+            useEffect(() => {
+                if (!isRunning || hasDefect) return;
+                const interval = setInterval(() => {
+                    const isDefect = Math.random() < 0.2;
+                    setProducts(prev => [...prev, { id: Date.now(), isDefect, left: 0 }]);
+                }, 1500);
+                return () => clearInterval(interval);
+            }, [isRunning, hasDefect]);
+
+            useEffect(() => {
+                if (!isRunning || (jidokaEnabled && hasDefect)) return;
+                const interval = setInterval(() => {
+                    setProducts(prev => {
+                        const moved = prev.map(p => ({ ...p, left: p.left + 2 }));
+                        const remaining = [];
+                        moved.forEach(p => {
+                            if (p.left > 90) {
+                                if (p.isDefect) setScore(s => ({ ...s, bad: s.bad + 1 }));
+                                else setScore(s => ({ ...s, good: s.good + 1 }));
+                            } else {
+                                if (jidokaEnabled && p.isDefect && p.left > 40 && p.left < 45 && !hasDefect) {
+                                    setHasDefect(true);
+                                }
+                                remaining.push(p);
+                            }
+                        });
+                        return remaining;
+                    });
+                }, 50);
+                return () => clearInterval(interval);
+            }, [isRunning, hasDefect, jidokaEnabled]);
+
+            const fixProblem = () => {
+                setProducts(prev => prev.filter(p => !p.isDefect || p.left < 40));
+                setHasDefect(false);
+            };
+
+            return (
+                <div className="min-h-screen py-20 px-4 flex flex-col items-center">
+                    <div className="text-center mb-10">
+                        <h1 className="text-5xl font-extrabold text-slate-900 mb-2">Jidoka Lab</h1>
+                        <p className="text-slate-500">Test the "Auto-Stop" system. Don't let defects pass!</p>
+                    </div>
+
+                    <div className="flex items-center gap-4 mb-8 glass px-6 py-3 rounded-full">
+                        <span className="font-bold text-slate-700">System Mode:</span>
+                        <button 
+                            onClick={() => { setJidokaEnabled(!jidokaEnabled); setHasDefect(false); setProducts([]); setScore({good:0, bad:0}); }}
+                            className={`px-5 py-2 rounded-full font-bold text-sm transition-all ${jidokaEnabled ? 'bg-emerald-500 text-white shadow-lg' : 'bg-slate-200 text-slate-500'}`}
+                        >
+                            {jidokaEnabled ? 'JIDOKA (AUTO-STOP)' : 'MANUAL (RISKY)'}
+                        </button>
+                        <div className="w-px h-6 bg-slate-300 mx-2"></div>
+                        <button onClick={() => setIsRunning(!isRunning)} className="p-2 rounded-full hover:bg-slate-100 text-slate-700">
+                            {isRunning ? <Icons.Pause /> : <Icons.Play />}
+                        </button>
+                    </div>
+
+                    <div className="relative w-full max-w-3xl h-56 bg-slate-800 rounded-2xl overflow-hidden shadow-2xl border-b-[12px] border-slate-900 flex items-center">
+                        <div className={`absolute bottom-6 left-0 right-0 h-6 conveyor-belt ${hasDefect ? 'conveyor-stopped' : ''}`}></div>
+
+                        {/* MACHINE HEAD */}
+                        <div className="absolute top-0 left-[45%] h-full w-24 flex flex-col items-center justify-start pt-6 z-10 border-l border-r border-white/5 bg-white/5 backdrop-blur-sm">
+                            <div className={`w-4 h-4 rounded-full mb-1 transition-colors duration-200 ${hasDefect ? 'bg-red-500 animate-ping' : 'bg-emerald-500'}`}></div>
+                            <div className={`w-32 h-10 rounded-lg flex items-center justify-center font-mono text-[10px] text-white font-bold border border-white/10 ${hasDefect ? 'bg-red-900/80' : 'bg-emerald-900/50'}`}>
+                                {hasDefect ? "ERROR: STOP" : "STATUS: OK"}
+                            </div>
+                            
+                            {hasDefect && (
+                                <button onClick={fixProblem} className="mt-8 bg-amber-400 hover:bg-amber-300 text-amber-950 px-4 py-2 rounded shadow-lg text-xs font-black animate-bounce z-50">
+                                    FIX DEFECT
+                                </button>
+                            )}
+                        </div>
+
+                        {products.map(p => (
+                            <div 
+                                key={p.id}
+                                className={`absolute bottom-10 w-14 h-14 rounded-xl flex items-center justify-center shadow-xl transition-all duration-75 border-b-4
+                                    ${p.isDefect ? 'bg-red-500 border-red-700 text-white' : 'bg-blue-500 border-blue-700 text-white'}
+                                `}
+                                style={{ left: `${p.left}%` }}
+                            >
+                                {p.isDefect ? <Icons.AlertTriangle size={24}/> : <Icons.Box size={24}/>}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex gap-6 mt-10 w-full max-w-3xl">
+                        <div className="flex-1 glass p-6 rounded-2xl border-b-4 border-emerald-500/20">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Good Products</span>
+                                <Icons.Box />
+                            </div>
+                            <div className="text-4xl font-black text-emerald-600">{score.good}</div>
+                        </div>
+                        <div className="flex-1 glass p-6 rounded-2xl border-b-4 border-red-500/20">
+                            <div className="flex justify-between items-center mb-2">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Escaped Defects</span>
+                                <Icons.AlertTriangle />
+                            </div>
+                            <div className="text-4xl font-black text-red-500">{score.bad}</div>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('house');
+            return (
+                <div className="pb-32">
+                    {view === 'house' && <HouseView />}
+                    {view === 'waste' && <WasteView />}
+                    {view === 'flow' && <FlowSimulation />}
+                    {view === 'jidoka' && <JidokaLab />}
+                    <Navbar setView={setView} activeView={view} />
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
